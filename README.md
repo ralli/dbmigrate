@@ -1,6 +1,7 @@
 # Database Migrations
 
-This project implements an experimental database migration tool.
+This project implements an experimental database migration tool. Experimental means it is work in progress 
+and not useful for any particular use case other than playing around. 
 
 It implements two different types of migrations:
 
@@ -47,7 +48,10 @@ database tables.
 Dependencies in scripts are currently managed by annotation comments.
 
 The following example shows a view with dependency on views declared in files named 
-`stg__person.sql` and `stg__email.sql`. 
+`stg__person.sql` and `stg__email.sql`. The migrations will be executed in topological order. `stg__person.sql` 
+and `stg__email.sql` will be executed before `person_details.sql`.
+
+
 
 ```sql
 -- 
