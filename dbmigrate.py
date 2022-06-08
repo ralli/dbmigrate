@@ -122,9 +122,10 @@ def create_table_object(schema: Optional[str]) -> Table:
 
     return Table('dbmigrate_log', metadata,
                  Column('id', String(40), nullable=False, primary_key=True),
-                 Column('name', String(255), nullable=False),
-                 Column('checksum', String(64), nullable=False),
-                 Column('created_at', DateTime, nullable=False))
+                 Column('name', String(255), nullable=False, comment="the migrations name"),
+                 Column('checksum', String(64), nullable=False,
+                        comment="checksum to verify, the migration is not modified"),
+                 Column('created_at', DateTime, nullable=False, comment="the migrations execution date"))
 
 
 def create_migrations_log_table(engine: Engine, schema: Optional[str] = None):
