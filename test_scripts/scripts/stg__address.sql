@@ -1,6 +1,6 @@
 -- sources: pagila.address
 
-create view stg_address as
+create view stg__address as
 (
 select *
 from person

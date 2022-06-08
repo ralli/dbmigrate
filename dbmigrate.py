@@ -11,19 +11,10 @@ from uuid import uuid4
 
 from sqlalchemy import create_engine, Table, MetaData, Column, String, DateTime, text
 from sqlalchemy.engine import Engine
+import sqlparse
 
 DEPENDS_ON_REGEX = re.compile(r'^--\s+depends:\s+(.*)$')
 SOURCES_REGEX = re.compile(r'^--\s+sources:\s+(.*)$')
-
-
-def create_table_object(schema: Optional[str]) -> Table:
-    metadata = MetaData(schema=schema)
-
-    return Table('dbmigrate_log', metadata,
-                 Column('id', String(40), nullable=False, primary_key=True),
-                 Column('name', String(255), nullable=False),
-                 Column('checksum', String(64), nullable=False),
-                 Column('created_at', DateTime, nullable=False))
 
 
 class Migration:
@@ -92,14 +83,51 @@ class ConsoleMigrationBackend(MigrationBackend):
         print(statement)
 
 
+class DatabaseMigrationBackend(MigrationBackend):
+    engine: Engine
+
+    def __init__(self, engine: Engine):
+        self.engine = engine
+
+    def execute_migration(self, migration: Migration):
+        with open(migration.filename, "r") as f:
+            contents = f.read()
+
+        with self.engine.begin() as connection:
+            statements = sqlparse.split(contents, "utf-8")
+            for statement in statements:
+                connection.execute(text(statement))
+            statement = f"insert into dbmigrate_log (id, name, checksum, created_at) values ({quoted(migration.migration_id)}, {quoted(migration.name)}, {quoted(migration.checksum)}, {quoted(datetime.now().isoformat())});"
+            connection.execute(text(statement))
+
+    def execute_script(self, script: Script):
+        with open(script.filename, "r") as f:
+            contents = f.read()
+        with self.engine.begin() as connection:
+            connection.execute(text(contents))
+            statement = f"insert into dbmigrate_log (id, name, checksum, created_at) values ({quoted(script.migration_id)}, {quoted(script.name)}, {quoted(script.checksum)}, {quoted(datetime.now().isoformat())});"
+            connection.execute(text(statement))
+
+
 def create_connection() -> Engine:
-    url = "sqlite+pysqlite:///dbmigrate.db"
+    # url = "sqlite+pysqlite:///dbmigrate.db"
+    url = "postgresql+psycopg2://dbmigrate:dbmigrate@localhost:5432/dbmigrate"
     engine = create_engine(url)
     debug(f"using connection: {url}")
     return engine
 
 
-def create_migrations_log(engine: Engine, schema: Optional[str] = None):
+def create_table_object(schema: Optional[str]) -> Table:
+    metadata = MetaData(schema=schema)
+
+    return Table('dbmigrate_log', metadata,
+                 Column('id', String(40), nullable=False, primary_key=True),
+                 Column('name', String(255), nullable=False),
+                 Column('checksum', String(64), nullable=False),
+                 Column('created_at', DateTime, nullable=False))
+
+
+def create_migrations_log_table(engine: Engine, schema: Optional[str] = None):
     table = create_table_object(schema)
     table.metadata.create_all(bind=engine)
 
@@ -226,7 +254,7 @@ def check_migration(engine: Engine, name: str, checksum: str) -> bool:
     if db_checksum != checksum:
         warning("migration {} has invalid checksum")
         return False
-    return True
+    return False
 
 
 def check_script(engine: Engine, name: str, checksum: str) -> bool:
@@ -240,7 +268,7 @@ def check_script(engine: Engine, name: str, checksum: str) -> bool:
 
 def main():
     engine = create_connection()
-    create_migrations_log(engine)
+    create_migrations_log_table(engine)
     migrations_path = Path("test_scripts", "migrations")
     info(f"migrations_path: {migrations_path}")
 
@@ -252,9 +280,11 @@ def main():
     scripts = process_scripts(scripts_path)
     scripts = [s for s in scripts if check_script(engine, s.name, s.checksum)]
     dependency_graph = build_dependency_graph(scripts)
-    backend = ConsoleMigrationBackend()
+    # backend = ConsoleMigrationBackend()
+    backend = DatabaseMigrationBackend(engine)
 
     for m in migrations:
+        info(f"execute migration: {m.name}")
         backend.execute_migration(m)
 
     script_map = {}
@@ -264,6 +294,7 @@ def main():
     sorted_list = topological_sort(dependency_graph)
     for script_name in sorted_list:
         if script_name in script_map:
+            info(f"execute script: {m.name}")
             s = script_map[script_name]
             backend.execute_script(s)
         else:
@@ -272,5 +303,5 @@ def main():
 
 if __name__ == '__main__':
     logging.basicConfig(level=logging.DEBUG)
-    logging.getLogger('sqlalchemy.engine').setLevel(logging.INFO)
+    # logging.getLogger('sqlalchemy.engine').setLevel(logging.INFO)
     main()

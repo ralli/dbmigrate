@@ -10,4 +10,4 @@ create table address
     postal_code varchar(10)
 );
 
-create index ix_person_1 on address (address_id);
+create index ix_address_1 on address (address_id);

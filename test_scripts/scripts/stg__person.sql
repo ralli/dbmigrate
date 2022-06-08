@@ -3,6 +3,6 @@
 create view stg__person as
 (
 select *
-from pagila.person
+from person
 order by last_name
     );
